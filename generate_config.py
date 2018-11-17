@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import binascii
 import yaml
 import os
@@ -93,9 +93,16 @@ server {
 """
 
 settings = {
+    "use_mailgun": False,
     "email_from":"",
     "mailgun_api_key":"",
     "mailgun_sending_domain":"",
+
+    "smtp_host":"",
+    "smtp_port":None,
+    "smtp_login":"",
+    "smtp_password":"",
+
     "domain": "",
     "abuse_email": "",
     "cookie_secret": "",
@@ -120,15 +127,30 @@ if hostname != "":
 	settings["domain"] = hostname
 nginx_template = nginx_template.replace( "fakedomain.com", settings["domain"] )
 
-print "Great! Now let's setup your Mailgun account to send XSS alerts to."
+print "Great! Now let's setup your email delivery to send XSS alerts to."
 print ""
-print "Enter your API key: "
-print "(ex. key-8da843ff65205a61374b09b81ed0fa35)"
-settings["mailgun_api_key"] = raw_input( "Mailgun API key: ")
-print ""
-print "What is your Mailgun domain? "
-print "(ex. example.com)"
-settings["mailgun_sending_domain"] = raw_input( "Mailgun domain: ")
+if raw_input("Use Mailgun for delivery? (yes/NO): ") == 'yes':
+  settings["use_mailgun"] = True
+  print "Enter your API key: "
+  print "(ex. key-8da843ff65205a61374b09b81ed0fa35)"
+  settings["mailgun_api_key"] = raw_input( "Mailgun API key: ")
+  print ""
+  print "What is your Mailgun domain? "
+  print "(ex. example.com)"
+  settings["mailgun_sending_domain"] = raw_input( "Mailgun domain: ")
+else:
+  settings["use_mailgun"] = False
+  print "Enter SMTP server hostname: "
+  settings["smtp_host"] = raw_input("SMTP hostname:")
+  print ""
+  print "Enter SMTP server port: "
+  settings["smtp_port"] = int(raw_input("SMTP port:"))
+  print ""
+  print "Enter SMTP login account username: "
+  settings["smtp_login"] = raw_input("SMTP login username:")
+  print ""
+  print "Enter SMTP login account password: "
+  settings["smtp_password"] = raw_input("SMTP login password:")
 print ""
 print "What email address is sending the payload fire emails?: "
 print "(ex. no-reply@example.com)"

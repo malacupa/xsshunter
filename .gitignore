@@ -5,3 +5,5 @@ gui/guienv/*
 .DS_Store
 api/uploads/*
 env
+config.yaml
+default
