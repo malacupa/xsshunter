@@ -1,0 +1,13 @@
+[Unit]
+Description=xsshunter GUI backend
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=3
+WorkingDirectory=/opt/xsshunter/gui
+ExecStart=/usr/bin/python2.7 ./guiserver.py
+Wants=nginx.service
+
+[Install]
+WantedBy=multi-user.target
